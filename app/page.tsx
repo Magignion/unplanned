@@ -87,7 +87,170 @@ function CategoryTag({ emoji, label, color }: { emoji: string; label: string; co
     }}>{emoji} {label}</span>
   );
 }
+// ── PAGE DÉFI DU JOUR ─────────────────────────────────────────
+const DAILY_CHALLENGES = [
+  { id: 1, category: "Nourriture", categoryEmoji: "🍕", categoryColor: "#f97316", title: "Try a food you've never eaten before", fromFriend: "Marcus R.", duration: "< 5 min" },
+  { id: 2, category: "Nature", categoryEmoji: "🌿", categoryColor: "#22c55e", title: "Walk barefoot on grass for 5 minutes", fromFriend: null, duration: "< 5 min" },
+  { id: 3, category: "Créativité", categoryEmoji: "🎨", categoryColor: "#a855f7", title: "Draw something with your non-dominant hand", fromFriend: null, duration: "< 5 min" },
+  { id: 4, category: "Sport", categoryEmoji: "⚡", categoryColor: "#3b82f6", title: "Do 20 jumping jacks right now", fromFriend: "Sarah K.", duration: "< 5 min" },
+  { id: 5, category: "Social", categoryEmoji: "💬", categoryColor: "#ec4899", title: "Compliment a stranger today", fromFriend: null, duration: "< 5 min" },
+];
 
+function DailyChallengePage({ onBack }: { onBack: () => void }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [rerollsLeft, setRerollsLeft] = useState(4);
+  const [accepted, setAccepted] = useState(false);
+  const [flipping, setFlipping] = useState(false);
+
+  const challenge = DAILY_CHALLENGES[currentIndex];
+
+  const handleReroll = () => {
+    if (rerollsLeft === 0 || flipping) return;
+    setFlipping(true);
+    setTimeout(() => {
+      setCurrentIndex((prev) => (prev + 1) % DAILY_CHALLENGES.length);
+      setRerollsLeft((prev) => prev - 1);
+      setFlipping(false);
+    }, 300);
+  };
+
+  return (
+    <div style={{ paddingBottom: 100 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 0 24px" }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: WHITE, fontSize: 22, cursor: "pointer" }}>←</button>
+        <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 700, margin: 0 }}>Défi du Jour</h2>
+      </div>
+
+      {/* Carte défi */}
+      <div style={{
+        background: CARD,
+        borderRadius: 24,
+        overflow: "hidden",
+        transition: "opacity 0.3s, transform 0.3s",
+        opacity: flipping ? 0 : 1,
+        transform: flipping ? "scale(0.97)" : "scale(1)",
+      }}>
+        {/* Top */}
+        <div style={{ padding: "24px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <CategoryTag emoji={challenge.categoryEmoji} label={challenge.category} color={challenge.categoryColor} />
+          <span style={{ color: GRAY, fontSize: 13 }}>⏱ {challenge.duration}</span>
+        </div>
+
+        {/* Titre */}
+        <div style={{ padding: "24px 24px 8px" }}>
+          <div style={{ color: WHITE, fontSize: 26, fontWeight: 800, lineHeight: 1.3 }}>
+            {challenge.title}
+          </div>
+        </div>
+
+        {/* Envoyé par */}
+        {challenge.fromFriend ? (
+          <div style={{ padding: "0 24px 24px", display: "flex", alignItems: "center", gap: 8 }}>
+            <Avatar emoji="👦" size={32} />
+            <span style={{ color: ORANGE, fontSize: 14, fontWeight: 600 }}>
+              Envoyé par {challenge.fromFriend} 👋
+            </span>
+          </div>
+        ) : (
+          <div style={{ padding: "0 24px 24px" }}>
+            <span style={{ color: GRAY, fontSize: 14 }}>📋 Défi du catalogue</span>
+          </div>
+        )}
+
+        {/* Illustration emoji grande */}
+        <div style={{
+          background: `${challenge.categoryColor}15`,
+          margin: "0 24px 24px",
+          borderRadius: 16,
+          height: 160,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 80,
+        }}>
+          {challenge.categoryEmoji}
+        </div>
+      </div>
+
+      {/* Boutons */}
+      {!accepted ? (
+        <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Accepter */}
+          <button
+            onClick={() => setAccepted(true)}
+            style={{
+              background: ORANGE,
+              border: "none",
+              borderRadius: 16,
+              padding: "18px",
+              color: WHITE,
+              fontSize: 18,
+              fontWeight: 700,
+              cursor: "pointer",
+              width: "100%",
+            }}
+          >
+            ✅ Accepter le défi
+          </button>
+
+          {/* Reroll */}
+          <button
+            onClick={handleReroll}
+            disabled={rerollsLeft === 0}
+            style={{
+              background: rerollsLeft === 0 ? CARD2 : CARD,
+              border: `2px solid ${rerollsLeft === 0 ? CARD2 : ORANGE}`,
+              borderRadius: 16,
+              padding: "16px",
+              color: rerollsLeft === 0 ? GRAY : WHITE,
+              fontSize: 16,
+              fontWeight: 600,
+              cursor: rerollsLeft === 0 ? "not-allowed" : "pointer",
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+            }}
+          >
+            🎲 Reroll
+            <span style={{
+              background: rerollsLeft === 0 ? CARD2 : `${ORANGE}33`,
+              color: rerollsLeft === 0 ? GRAY : ORANGE,
+              borderRadius: 20,
+              padding: "2px 10px",
+              fontSize: 14,
+              fontWeight: 700,
+            }}>
+              {rerollsLeft}/4
+            </span>
+          </button>
+        </div>
+      ) : (
+        /* État accepté */
+        <div style={{ marginTop: 24, background: CARD, borderRadius: 20, padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 56 }}>🎉</div>
+          <div style={{ color: WHITE, fontSize: 20, fontWeight: 700, marginTop: 12 }}>Défi accepté !</div>
+          <div style={{ color: GRAY, fontSize: 15, marginTop: 8 }}>Tu as jusqu'à minuit pour le réaliser.</div>
+          <button
+            onClick={onBack}
+            style={{ marginTop: 20, background: ORANGE, border: "none", borderRadius: 14, padding: "14px 32px", color: WHITE, fontSize: 16, fontWeight: 700, cursor: "pointer" }}
+          >
+            Retour au fil
+          </button>
+        </div>
+      )}
+
+      {/* Rerolls épuisés */}
+      {rerollsLeft === 0 && !accepted && (
+        <div style={{ marginTop: 16, textAlign: "center", color: GRAY, fontSize: 14 }}>
+          Plus de rerolls disponibles pour aujourd'hui 😅
+        </div>
+      )}
+    </div>
+  );
+}
 // ── PAGE FEED ─────────────────────────────────────────────────
 function FeedPage() {
   return (
@@ -295,6 +458,7 @@ export default function App() {
       case "profile": return <ProfilePage onBack={() => setPage("feed")} />;
       case "friends": return <FriendsPage onBack={() => setPage("feed")} />;
       case "settings": return <SettingsPage onBack={() => setPage("feed")} />;
+      case "daily": return <DailyChallengePage onBack={() => setPage("feed")} />;
       default: return <FeedPage />;
     }
   };
@@ -308,7 +472,7 @@ export default function App() {
           {[0,1,2].map(i => <div key={i} style={{ width: 24, height: 2, background: WHITE, borderRadius: 2 }} />)}
         </button>
         <span style={{ color: WHITE, fontSize: 20, fontWeight: 800 }}>Unplanned</span>
-        <button style={{ background: "none", border: "none", color: ORANGE, fontSize: 26, cursor: "pointer", lineHeight: 1 }}>+</button>
+        <button onClick={() => setPage("daily")} style={{ background: "none", border: "none", color: ORANGE, fontSize: 26, cursor: "pointer", lineHeight: 1 }}>+</button>
       </div>
       {/* Contenu */}
       <div style={{ maxWidth: 680, margin: "0 auto", padding: "20px 16px" }}>
