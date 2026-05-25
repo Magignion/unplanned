@@ -319,38 +319,270 @@ function ProfilePage({ user, onBack, onUpdate }: { user: User; onBack: () => voi
 }
 
 // ── FRIENDS PAGE ──────────────────────────────────────────────
-function FriendsPage({ onBack }: { onBack: () => void }) {
+function FriendsPage({ onBack, currentUser }: { onBack: () => void; currentUser: User }) {
   const [search, setSearch] = useState("");
-  const filtered = FRIENDS_LIST.filter(f =>
-    f.name.toLowerCase().includes(search.toLowerCase()) ||
-    f.username.toLowerCase().includes(search.toLowerCase())
-  );
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [pendingReceived, setPendingReceived] = useState<any[]>([]);
+  const [pendingSent, setPendingSent] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [tab, setTab] = useState<"friends" | "requests">("friends");
+
+  useEffect(() => { loadAll(); }, []);
+
+  useEffect(() => {
+    if (!search.trim()) { setSearchResults([]); return; }
+    const timer = setTimeout(() => handleSearch(), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const loadAll = async () => {
+    setLoading(true);
+
+    // Amis acceptés
+    const { data: sent } = await supabase
+      .from("friendships")
+      .select("friend_id")
+      .eq("user_id", currentUser.id)
+      .eq("status", "accepted");
+
+    const { data: received } = await supabase
+      .from("friendships")
+      .select("user_id")
+      .eq("friend_id", currentUser.id)
+      .eq("status", "accepted");
+
+    const friendIds = [
+      ...(sent?.map(f => f.friend_id) || []),
+      ...(received?.map(f => f.user_id) || []),
+    ];
+
+    if (friendIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles").select("*").in("user_id", friendIds);
+      setFriends(profiles || []);
+    } else {
+      setFriends([]);
+    }
+
+    // Demandes reçues en attente
+    const { data: pendingIn } = await supabase
+      .from("friendships")
+      .select("user_id")
+      .eq("friend_id", currentUser.id)
+      .eq("status", "pending");
+
+    if (pendingIn && pendingIn.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles").select("*").in("user_id", pendingIn.map(p => p.user_id));
+      setPendingReceived(profiles || []);
+    } else {
+      setPendingReceived([]);
+    }
+
+    // Demandes envoyées en attente
+    const { data: pendingOut } = await supabase
+      .from("friendships")
+      .select("friend_id")
+      .eq("user_id", currentUser.id)
+      .eq("status", "pending");
+
+    if (pendingOut && pendingOut.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles").select("*").in("user_id", pendingOut.map(p => p.friend_id));
+      setPendingSent(profiles || []);
+    } else {
+      setPendingSent([]);
+    }
+
+    setLoading(false);
+  };
+
+  const handleSearch = async () => {
+    if (!search.trim()) return;
+    const clean = search.replace("@", "").toLowerCase();
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .ilike("username", `%${clean}%`)
+      .neq("user_id", currentUser.id)
+      .limit(5);
+    setSearchResults(data || []);
+  };
+
+  const handleAddFriend = async (profile: any) => {
+    const alreadyFriend = friends.some(f => f.user_id === profile.user_id);
+    const alreadySent = pendingSent.some(f => f.user_id === profile.user_id);
+    if (alreadyFriend) { setMessage("Vous êtes déjà amis ! 👯"); return; }
+    if (alreadySent) { setMessage("Invitation déjà envoyée ! ⏳"); return; }
+
+    const { error } = await supabase.from("friendships").insert({
+      user_id: currentUser.id,
+      friend_id: profile.user_id,
+      status: "pending",
+    });
+
+    if (!error) {
+      setMessage(`Invitation envoyée à ${profile.name} 🎉`);
+      setSearch("");
+      setSearchResults([]);
+      loadAll();
+    }
+  };
+
+  const handleAccept = async (profile: any) => {
+    await supabase.from("friendships")
+      .update({ status: "accepted" })
+      .eq("user_id", profile.user_id)
+      .eq("friend_id", currentUser.id);
+
+    // Créer la relation inverse
+    await supabase.from("friendships").insert({
+      user_id: currentUser.id,
+      friend_id: profile.user_id,
+      status: "accepted",
+    });
+
+    setMessage(`${profile.name} ajouté(e) comme ami ! 🎉`);
+    loadAll();
+  };
+
+  const handleDecline = async (profile: any) => {
+    await supabase.from("friendships")
+      .delete()
+      .eq("user_id", profile.user_id)
+      .eq("friend_id", currentUser.id);
+    loadAll();
+  };
+
   return (
     <div style={{ paddingBottom: 100 }}>
+      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 0 20px" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: WHITE, fontSize: 22, cursor: "pointer" }}>←</button>
         <h2 style={{ color: WHITE, fontSize: 22, fontWeight: 700, margin: 0 }}>Amis</h2>
+        {pendingReceived.length > 0 && (
+          <span style={{ background: ORANGE, color: WHITE, borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>
+            {pendingReceived.length}
+          </span>
+        )}
       </div>
-      <input placeholder="Rechercher des amis..." value={search} onChange={e => setSearch(e.target.value)}
-        style={{ width: "100%", background: CARD2, border: "none", borderRadius: 14, padding: "14px 16px", color: WHITE, fontSize: 15, marginBottom: 16, boxSizing: "border-box" }} />
-      <button style={{ width: "100%", background: ORANGE, border: "none", borderRadius: 14, padding: "16px", color: WHITE, fontSize: 16, fontWeight: 700, cursor: "pointer", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-        👥 Ajouter des Amis
-      </button>
-      <div style={{ background: CARD, borderRadius: 16, overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px", color: GRAY, fontSize: 14 }}>{filtered.length} amis</div>
-        {filtered.map((f, i) => (
-          <div key={f.id} style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderTop: i > 0 ? `1px solid ${CARD2}` : "none" }}>
-            <Avatar emoji={f.emoji} />
-            <div style={{ flex: 1, marginLeft: 12 }}>
-              <div style={{ color: WHITE, fontWeight: 700 }}>{f.name}</div>
-              <div style={{ color: GRAY, fontSize: 13 }}>{f.username}</div>
-            </div>
-            <div style={{ background: CARD2, borderRadius: 20, padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}>
-              <span>🔥</span><span style={{ color: WHITE, fontWeight: 700 }}>{f.streak}</span>
-            </div>
+
+      {/* Recherche temps réel */}
+      <div style={{ position: "relative", marginBottom: 16 }}>
+        <input
+          placeholder="Rechercher par @username..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); setMessage(""); }}
+          style={{ width: "100%", background: CARD2, border: "none", borderRadius: 14, padding: "14px 16px", color: WHITE, fontSize: 15, outline: "none", boxSizing: "border-box" }}
+        />
+        {searchResults.length > 0 && (
+          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: CARD, borderRadius: 14, marginTop: 6, zIndex: 10, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
+            {searchResults.map((profile, i) => {
+              const isFriend = friends.some(f => f.user_id === profile.user_id);
+              const isPending = pendingSent.some(f => f.user_id === profile.user_id);
+              return (
+                <div key={profile.id} style={{ display: "flex", alignItems: "center", padding: "12px 16px", borderTop: i > 0 ? `1px solid ${CARD2}` : "none" }}>
+                  <Avatar emoji={profile.emoji || "👤"} size={36} />
+                  <div style={{ flex: 1, marginLeft: 12 }}>
+                    <div style={{ color: WHITE, fontWeight: 700, fontSize: 14 }}>{profile.name}</div>
+                    <div style={{ color: GRAY, fontSize: 12 }}>{profile.username}</div>
+                  </div>
+                  <button onClick={() => handleAddFriend(profile)} disabled={isFriend || isPending}
+                    style={{ background: isFriend ? CARD2 : isPending ? CARD2 : ORANGE, border: "none", borderRadius: 10, padding: "6px 14px", color: isFriend || isPending ? GRAY : WHITE, fontWeight: 700, cursor: isFriend || isPending ? "not-allowed" : "pointer", fontSize: 13 }}>
+                    {isFriend ? "Amis ✓" : isPending ? "En attente..." : "+ Ajouter"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
+        )}
+      </div>
+
+      {message && (
+        <div style={{ color: "#4ade80", fontSize: 14, textAlign: "center", background: "#4ade8022", borderRadius: 10, padding: "10px", marginBottom: 16 }}>
+          {message}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{ display: "flex", background: CARD, borderRadius: 14, padding: 4, marginBottom: 20 }}>
+        {([["friends", `Amis (${friends.length})`], ["requests", `Demandes (${pendingReceived.length})`]] as const).map(([t, label]) => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 14, background: tab === t ? ORANGE : "transparent", color: tab === t ? WHITE : GRAY }}>
+            {label}
+          </button>
         ))}
       </div>
+
+      {/* Contenu */}
+      {tab === "friends" && (
+        <div style={{ background: CARD, borderRadius: 16, overflow: "hidden" }}>
+          {loading ? (
+            <div style={{ padding: "24px", textAlign: "center", color: GRAY }}>Chargement...</div>
+          ) : friends.length === 0 ? (
+            <div style={{ padding: "24px 16px", textAlign: "center", color: GRAY, fontSize: 14 }}>
+              Pas encore d'amis 😅 Recherche par @username !
+            </div>
+          ) : friends.map((f, i) => (
+            <div key={f.id} style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderTop: i > 0 ? `1px solid ${CARD2}` : "none" }}>
+              <Avatar emoji={f.emoji || "👤"} />
+              <div style={{ flex: 1, marginLeft: 12 }}>
+                <div style={{ color: WHITE, fontWeight: 700 }}>{f.name}</div>
+                <div style={{ color: GRAY, fontSize: 13 }}>{f.username}</div>
+              </div>
+              <div style={{ background: CARD2, borderRadius: 20, padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}>
+                <span>🔥</span><span style={{ color: WHITE, fontWeight: 700 }}>0</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "requests" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {pendingReceived.length === 0 ? (
+            <div style={{ background: CARD, borderRadius: 16, padding: "24px", textAlign: "center", color: GRAY, fontSize: 14 }}>
+              Aucune demande en attente 👌
+            </div>
+          ) : pendingReceived.map((profile) => (
+            <div key={profile.id} style={{ background: CARD, borderRadius: 16, padding: "16px", display: "flex", alignItems: "center", gap: 12 }}>
+              <Avatar emoji={profile.emoji || "👤"} />
+              <div style={{ flex: 1 }}>
+                <div style={{ color: WHITE, fontWeight: 700 }}>{profile.name}</div>
+                <div style={{ color: GRAY, fontSize: 13 }}>{profile.username}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => handleDecline(profile)}
+                  style={{ background: CARD2, border: "none", borderRadius: 10, padding: "8px 14px", color: GRAY, fontWeight: 600, cursor: "pointer", fontSize: 14 }}>
+                  ✕
+                </button>
+                <button onClick={() => handleAccept(profile)}
+                  style={{ background: ORANGE, border: "none", borderRadius: 10, padding: "8px 14px", color: WHITE, fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+                  ✓ Accepter
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {pendingSent.length > 0 && (
+            <>
+              <div style={{ color: GRAY, fontSize: 12, fontWeight: 700, letterSpacing: 1, marginTop: 8 }}>INVITATIONS ENVOYÉES</div>
+              {pendingSent.map((profile) => (
+                <div key={profile.id} style={{ background: CARD, borderRadius: 16, padding: "16px", display: "flex", alignItems: "center", gap: 12 }}>
+                  <Avatar emoji={profile.emoji || "👤"} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: WHITE, fontWeight: 700 }}>{profile.name}</div>
+                    <div style={{ color: GRAY, fontSize: 13 }}>{profile.username}</div>
+                  </div>
+                  <span style={{ color: GRAY, fontSize: 13 }}>En attente... ⏳</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -497,7 +729,7 @@ export default function App() {
   const renderPage = () => {
     switch (page) {
       case "profile": return <ProfilePage user={user} onBack={() => setPage("feed")} onUpdate={refreshUser} />;
-      case "friends": return <FriendsPage onBack={() => setPage("feed")} />;
+      case "friends": return <FriendsPage onBack={() => setPage("feed")} currentUser={user} />;
       case "settings": return <SettingsPage onBack={() => setPage("feed")} onLogout={handleLogout} />;
       case "daily": return <DailyChallengePage onBack={() => setPage("feed")} />;
       default: return <FeedPage />;
